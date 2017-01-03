@@ -1,5 +1,6 @@
 #import "ReactNativeShareExtension.h"
 #import <RCTRootView.h>
+#import <MobileCoreServices/MobileCoreServices.h>
 
 #define ITEM_IDENTIFIER @"public.url"
 
@@ -42,43 +43,47 @@ RCT_REMAP_METHOD(data,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-  [self extractUrlFromContext: extensionContext withCallback:^(NSURL* url, NSException* err) {
+  [self extractUrlFromContext: extensionContext withCallback:^(NSDictionary* result, NSException* err) {
     NSDictionary *inventory = @{
-      @"type": @"text/plain",
-      @"value": [url absoluteString]
+      @"url": result[@"url"],
+      @"cookie": result[@"cookie"]
     };
     
     resolve(inventory);
   }];
 }
 
-- (void)extractUrlFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSURL *url, NSException *exception))callback {
-  @try {
-    NSExtensionItem *item = [context.inputItems firstObject];
-    NSArray *attachments = item.attachments;
-    __block NSItemProvider *urlProvider = nil;
-    [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
-      if([provider hasItemConformingToTypeIdentifier:ITEM_IDENTIFIER]) {
-        urlProvider = provider;
-        *stop = YES;
-      }
-    }];
-    
-    if(urlProvider) {
-      [urlProvider loadItemForTypeIdentifier:ITEM_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-        NSURL *url = (NSURL *)item;
+- (void)extractUrlFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSDictionary *result, NSException *exception))callback {
+    @try {
         
-        if(callback) {
-          callback(url, nil);
+        for (NSExtensionItem *item in context.inputItems) {
+            for (NSItemProvider *itemProvider in item.attachments) {
+                if ([itemProvider hasItemConformingToTypeIdentifier:(NSString *)kUTTypePropertyList]) {
+                    
+                    
+                    [itemProvider loadItemForTypeIdentifier: (NSString *) kUTTypePropertyList
+                                                    options: 0
+                                          completionHandler: ^(id<NSSecureCoding> item, NSError *error) {
+                                              
+                                              if (item != nil) {
+                                                  
+                                                  NSDictionary *result = (NSDictionary *) item;
+                                                  NSDictionary *resultDict = result[NSExtensionJavaScriptPreprocessingResultsKey];
+                                                  
+                                                  if(callback) {
+                                                      callback(resultDict, nil);
+                                                  }
+                                              }
+                                              
+                                          }];
+                    
+                }
+            }
         }
-      }];
+        
+        
+        
     }
-    else {
-      if(callback) {
-        callback(nil, [NSException exceptionWithName:@"provider error" reason:@"couldn't find url provider" userInfo:nil]);
-      }
-    }
-  }
   @catch (NSException *exception) {
     if(callback) {
       callback(nil, exception);
